@@ -1,21 +1,4 @@
 /*
- * Copyright (C) 2017  Joshua Choo
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- **********************************************************************
- *
  * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,10 +35,10 @@
 #define MPDECISION_SLACK_MIN_NODE "/sys/module/msm_mpdecision/slack_time_min_us"
 #define SCALING_MIN_FREQ "/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq"
 #define ONDEMAND_GOVERNOR "ondemand"
-#define INTERACTIVE_GOVERNOR "interactive"
-#define MSMDCVS_GOVERNOR "msm-dcvs"
 #define ALUCARDSCHED_GOVERNOR "alucardsched"
 #define DARKNESSSCHED_GOVERNOR "darknesssched"
+#define INTERACTIVE_GOVERNOR "interactive"
+#define MSMDCVS_GOVERNOR "msm-dcvs"
 #define SCHED_GOVERNOR "sched"
 #define SCHEDUTIL_GOVERNOR "schedutil"
 #define PWRUTIL_GOVERNOR "pwrutil"
@@ -85,3 +68,6 @@ const char * eas_governors[];
 int is_eas_governor(const char *governor);
 void get_int(const char* file_path, int* value, int fallback_value);
 void get_hex(const char* file_path, int* value, int fallback_value);
+
+#define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+

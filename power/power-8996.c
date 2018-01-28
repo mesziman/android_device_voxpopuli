@@ -26,7 +26,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#define LOG_NIDEBUG 0
+#define LOG_NDEBUG 1
 
 #include <errno.h>
 #include <string.h>
@@ -36,8 +36,10 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 
-#define LOG_TAG "Vox Populi PowerHAL"
+#define ATRACE_TAG (ATRACE_TAG_POWER | ATRACE_TAG_HAL)
+#define LOG_TAG "VOXPOP PowerHAL"
 #include <utils/Log.h>
+#include <cutils/trace.h>
 #include <hardware/hardware.h>
 #include <hardware/power.h>
 
@@ -79,23 +81,26 @@ static int process_cam_preview_hint(void *metadata)
     }
 
     if (cam_preview_metadata.state == 1) {
-        // EAS resources
-        /*
-         * lower bus BW to save power
-         *   0x41810000: low power ceil mpbs = 2500
-         *   0x41814000: low power io percent = 50
-         */
-        int resource_values[] = {0x41810000, 0x9C4, 0x41814000, 0x32};
+       
+            /*
+             * lower bus BW to save power
+             *   0x41810000: low power ceil mpbs = 2500
+             *   0x41814000: low power io percent = 50
+             */
+            int resource_values[] = {0x41810000, 0x9C4, 0x41814000, 0x32};
 
-        perform_hint_action(
-            cam_preview_metadata.hint_id, resource_values,
-            sizeof(resource_values) / sizeof(resource_values[0]));
-        ALOGI("Cam Preview hint start");
-        return HINT_HANDLED;
+            perform_hint_action(
+                cam_preview_metadata.hint_id, resource_values,
+                sizeof(resource_values) / sizeof(resource_values[0]));
+            ALOGI("Cam Preview hint start");
+            return HINT_HANDLED;
+        
     } else if (cam_preview_metadata.state == 0) {
+      
         undo_hint_action(cam_preview_metadata.hint_id);
         ALOGI("Cam Preview hint stop");
         return HINT_HANDLED;
+        
     }
     return HINT_NONE;
 }
@@ -103,7 +108,6 @@ static int process_cam_preview_hint(void *metadata)
 
 static int process_boost(int boost_handle, int duration)
 {
-    // EAS resources
     char governor[80];
     int eas_launch_resources[] = {  MAX_FREQ_BIG_CORE_0, 0xFFF, 
                                     MAX_FREQ_LITTLE_CORE_0, 0xFFF,
@@ -111,7 +115,6 @@ static int process_boost(int boost_handle, int duration)
                                     MIN_FREQ_LITTLE_CORE_0, 0xFFF,
                                     CPUBW_HWMON_MIN_FREQ, 140,   
                                     ALL_CPUS_PWR_CLPS_DIS_V3, 0x1};
-
     int* launch_resources;
     size_t launch_resources_size;
 
@@ -125,7 +128,6 @@ static int process_boost(int boost_handle, int duration)
 static int process_video_encode_hint(void *metadata)
 {
     char governor[80];
-    struct video_encode_metadata_t video_encode_metadata;
     static int boost_handle = -1;
 
     if (get_scaling_governor(governor, sizeof(governor)) == -1) {
@@ -134,47 +136,33 @@ static int process_video_encode_hint(void *metadata)
         return HINT_NONE;
     }
 
-    /* Initialize encode metadata struct fields */
-    memset(&video_encode_metadata, 0, sizeof(struct video_encode_metadata_t));
-    video_encode_metadata.state = -1;
-    video_encode_metadata.hint_id = DEFAULT_VIDEO_ENCODE_HINT_ID;
-
     if (metadata) {
-        if (parse_video_encode_metadata((char *)metadata, &video_encode_metadata) ==
-            -1) {
-            ALOGE("Error occurred while parsing metadata.");
-            return HINT_NONE;
-        }
-    } else {
-        return HINT_NONE;
-    }
-
-    if (video_encode_metadata.state == 1) {
         int duration = 2000; // boosts 2s for starting encoding
         boost_handle = process_boost(boost_handle, duration);
         ALOGD("LAUNCH ENCODER-ON: %d MS", duration);
+        
 
-        // EAS resources
-        /* 1. bus DCVS set to V2 config:
-         *    0x41810000: low power ceil mpbs - 2500
-         *    0x41814000: low power io percent - 50
-         * 2. hysteresis optimization
-         *    0x4180C000: bus dcvs hysteresis tuning
-         *    0x41820000: sample_ms of 10 ms
-         */
-        int resource_values[] = {0x41810000, 0x9C4, 0x41814000, 0x32,
-                                 0x4180C000, 0x0,   0x41820000, 0xA};
+            /* 1. bus DCVS set to V2 config:
+             *    0x41810000: low power ceil mpbs - 2500
+             *    0x41814000: low power io percent - 50
+             * 2. hysteresis optimization
+             *    0x4180C000: bus dcvs hysteresis tuning
+             *    0x41820000: sample_ms of 10 ms
+             */
+            int resource_values[] = {0x41810000, 0x9C4, 0x41814000, 0x32,
+                                     0x4180C000, 0x0,   0x41820000, 0xA};
 
-        perform_hint_action(video_encode_metadata.hint_id,
-                resource_values, sizeof(resource_values)/sizeof(resource_values[0]));
-        ALOGI("Video Encode hint start");
-        return HINT_HANDLED;
-
-    } else if (video_encode_metadata.state == 0) {
-        // boost handle is intentionally not released, release_request(boost_handle);
-        undo_hint_action(video_encode_metadata.hint_id);
-        ALOGI("Video Encode hint stop");
-        return HINT_HANDLED;
+            perform_hint_action(DEFAULT_VIDEO_ENCODE_HINT_ID,
+                    resource_values, sizeof(resource_values)/sizeof(resource_values[0]));
+            ALOGD("Video Encode hint start");
+            return HINT_HANDLED;
+        
+    } else {
+       
+            undo_hint_action(DEFAULT_VIDEO_ENCODE_HINT_ID);
+            ALOGD("Video Encode hint stop");
+            return HINT_HANDLED;
+        
     }
     return HINT_NONE;
 }
@@ -183,7 +171,9 @@ static int process_activity_launch_hint(void *data)
 {
     // boost will timeout in 5s
     int duration = 5000;
+    ATRACE_BEGIN("launch");
     if (sustained_performance_mode || vr_mode) {
+        ATRACE_END();
         return HINT_HANDLED;
     }
 
@@ -192,20 +182,26 @@ static int process_activity_launch_hint(void *data)
         launch_handle = process_boost(launch_handle, duration);
         if (launch_handle > 0) {
             launch_mode = 1;
-            ALOGI("Activity launch hint handled");
+            ALOGD("Activity launch hint handled");
+            ATRACE_INT("launch_lock", 1);
+            ATRACE_END();
             return HINT_HANDLED;
         } else {
+            ATRACE_END();
             return HINT_NONE;
         }
     } else if (data == NULL  && launch_mode == 1) {
         release_request(launch_handle);
+        ATRACE_INT("launch_lock", 0);
         launch_mode = 0;
+        ATRACE_END();
         return HINT_HANDLED;
     }
+    ATRACE_END();
     return HINT_NONE;
 }
 
-int power_hint_override(struct power_module *module, power_hint_t hint, void *data)
+int power_hint_override(power_hint_t hint, void *data)
 {
     int ret_val = HINT_NONE;
     switch(hint) {
@@ -226,7 +222,7 @@ int power_hint_override(struct power_module *module, power_hint_t hint, void *da
     return ret_val;
 }
 
-int set_interactive_override(struct power_module *module, int on)
+int set_interactive_override(int on)
 {
     return HINT_HANDLED; /* Don't excecute this code path, not in use */
     char governor[80];
@@ -246,7 +242,7 @@ int set_interactive_override(struct power_module *module, int on)
                 perform_hint_action(DISPLAY_STATE_HINT_ID,
                 resource_values, sizeof(resource_values)/sizeof(resource_values[0]));
                 display_hint_sent = 1;
-                ALOGI("Display Off hint start");
+                ALOGV("Display Off hint start");
                 return HINT_HANDLED;
             }
         }
@@ -256,7 +252,7 @@ int set_interactive_override(struct power_module *module, int on)
             (strlen(governor) == strlen(INTERACTIVE_GOVERNOR))) {
             undo_hint_action(DISPLAY_STATE_HINT_ID);
             display_hint_sent = 0;
-            ALOGI("Display Off hint stop");
+            ALOGV("Display Off hint stop");
             return HINT_HANDLED;
         }
     }
